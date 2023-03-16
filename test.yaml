@@ -1,0 +1,12 @@
+---
+
+- name: Install 3CX
+  hosts: all
+  become: yes
+  gather_facts: false
+  tasks:
+
+    #Restore Rsync-Backup
+    - name: Touch me
+      shell:
+            "touch /root/{{ pbx }}"   

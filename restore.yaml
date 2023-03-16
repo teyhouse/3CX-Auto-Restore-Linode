@@ -1,0 +1,260 @@
+---
+
+- name: Install 3CX
+  hosts: all
+  become: yes
+  gather_facts: false
+  tasks:
+
+    - name: update / upgrade system packages
+      apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
+
+    - name: Install gnupg
+      apt:
+        name: gnupg2
+        state: present
+
+    - name: Copy Key
+      ansible.builtin.copy:
+        src: 3cx-archive-keyring.gpg
+        dest: /usr/share/keyrings/3cx-archive-keyring.gpg
+
+    - name: Copy pbxlist
+      ansible.builtin.copy:
+        src: 3cxpbx.list
+        dest: /etc/apt/sources.list.d/3cxpbx.list
+
+    - name: Copy pbxlist-testing
+      ansible.builtin.copy:
+        src: 3cxpbx-testing.list
+        dest: /etc/apt/sources.list.d/3cxpbx-testing.list
+
+    - name: Add Apt-Source
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: deb http://deb.debian.org/debian buster-backports main contrib non-free
+
+    - name: Add Apt-Source
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: deb [arch=amd64 by-hash=yes signed-by=/usr/share/keyrings/3cx-archive-keyring.gpg] http://repo.3cx.com/debian/1804 buster main
+
+    - name: Add Apt-Source
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: deb [arch=amd64 by-hash=yes signed-by=/usr/share/keyrings/3cx-archive-keyring.gpg] http://repo.3cx.com/debian-security/1804 buster main
+
+    - name: add key to keyserver
+      shell:
+            "apt-key add /usr/share/keyrings/3cx-archive-keyring.gpg"
+
+    - name: apt-get update
+      shell:
+            "apt-get update"
+      args:
+            warn: false
+
+    - name: Install htop
+      apt:
+        name: htop
+        state: present
+
+    - name: Install libudev1
+      apt:
+        name: libudev1
+        state: present
+
+    - name: Install libunistring2
+      apt:
+        name: libunistring2
+        state: present
+
+    - name: Install mawk
+      apt:
+        name: mawk
+        state: present            
+
+    - name: Install unzip
+      apt:
+        name: unzip
+        state: present     
+                 
+    - name: Install apt-transport-https
+      apt:
+        name: apt-transport-https
+        state: present
+
+    - name: Install nfs-common
+      apt:
+        name: nfs-common
+        state: present
+
+    - name: Install Wireguard
+      apt:
+        name: wireguard
+        state: present
+
+    - name: Install 3CX
+      shell:
+            "1 | DEBIAN_FRONTEND=noninteractive apt-get -y install -t buster 3cxpbx=18.0.4.965"
+
+- name: Restore 3CX-Zombie
+  hosts: all
+  become: yes
+  gather_facts: false
+  tasks:
+
+    #Mount Backup-Storage
+    #mkdir "/mnt/backup"
+    #mount "/dev/disk/by-id/scsi-0Linode_Volume_backup" "/mnt/backup"
+    #mount -t nfs 139.162.134.102:/mnt/backup /mnt/backup/
+
+    #Mount Backup-Store
+    - name: Mount Backup-Store
+      shell:
+            "mkdir /mnt/backup/ && mount -t nfs 139.162.134.102:/mnt/backup /mnt/backup/"
+
+    #Stop all relevant services
+
+    - name: Stop service 3CXEventNotificationManager
+      service:
+        name: 3CXEventNotificationManager
+        state: stopped
+
+    - name: Stop service 3CXMediaServer
+      service:
+        name: 3CXMediaServer
+        state: stopped
+
+    - name: Stop service 3CXPhoneSystemMC01
+      service:
+        name: 3CXPhoneSystemMC01
+        state: stopped
+
+    - name: Stop service 3CXIVR01
+      service:
+        name: 3CXIVR01
+        state: stopped
+
+    - name: Stop service 3CXQueueManager01
+      service:
+        name: 3CXQueueManager01
+        state: stopped        
+
+    - name: Stop service 3CXCallFlow01
+      service:
+        name: 3CXCallFlow01
+        state: stopped
+
+    - name: Stop service 3CXSystemService01
+      service:
+        name: 3CXSystemService01
+        state: stopped    
+
+    - name: Stop service 3CXAudioProvider01
+      service:
+        name: 3CXAudioProvider01
+        state: stopped
+
+    - name: Stop service 3CXHotelModule01
+      service:
+        name: 3CXHotelModule01
+        state: stopped    
+
+    - name: Stop service 3CXGatewayService
+      service:
+        name: 3CXGatewayService
+        state: stopped
+
+    - name: Stop service 3CXPhoneSystem01
+      service:
+        name: 3CXPhoneSystem01
+        state: stopped    
+
+    - name: Stop service 3CXCfgServ01
+      service:
+        name: 3CXCfgServ01
+        state: stopped
+
+    - name: Stop service nginx
+      service:
+        name: nginx
+        state: stopped    
+
+    - name: Stop service postgresql
+      service:
+        name: postgresql
+        state: stopped
+
+    #Restore Rsync-Backup
+    - name: Restore Rsync-Backup
+      shell:
+            "rsync -a /mnt/backup/{{ pbx }}/postgresql_data/ /var/lib/postgresql/11/"    
+
+    - name: Restore Rsync-Backup
+      shell:
+            "rsync -a /mnt/backup/{{ pbx }}/3cxpbx_files/ /var/lib/3cxpbx/"
+
+    #Temp-Fix for broken NFS-Permissions
+    - name: Fix Permissions
+      shell:
+            "chown -R postgres:postgres /var/lib/postgresql"
+
+    #Create Symlink
+    - name: Create Symlink
+      shell:
+            "ln -s /var/lib/3cxpbx/Bin/nginx/conf/nginx.conf /etc/nginx/sites-enabled/3cxpbx"
+
+    #Add UTF8 to Locales
+    - name: Apply Config
+      lineinfile:
+        path: /etc/locale.gen
+        regexp: '^# de_DE.UTF-8 UTF-8'
+        line: de_DE.UTF-8 UTF-8
+
+    #Gen Locales
+    - name: Regen Locale
+      shell:
+            "locale-gen"
+
+    #Start Services
+    - name: Start service nginx
+      service:
+        name: nginx
+        state: started    
+
+    - name: Start service postgresql
+      service:
+        name: postgresql
+        state: started
+
+    #Replace Public IP in Database
+    - name: Copy IP.sql
+      ansible.builtin.copy:
+        src: ip.sql
+        dest: /tmp/ip.sql
+
+    #Replace Public-IP in .sql file
+    - name: Replace ip in sql-file
+      shell: >
+            def=$(dig TXT +short o-o.myaddr.l.google.com @ns1.google.com -4 | sed -e 's/^"//' -e 's/"$//') && sed -i "s/%ip%/$def/g" /tmp/ip.sql
+    
+    #Apply IP to database
+    - name: Apply IP to database
+      shell:
+            "sudo -u postgres psql database_single < /tmp/ip.sql"
+
+    #Start 3CX-Services
+    - name: Start 3CX-Services
+      shell:
+            "/usr/sbin/3CXStartServices"
+
+    #Unmount Restore-Mount ! IMPORTANT! DO IT!!!!
+    - name: Unmount Backup-Mount
+      shell:
+            "umount /mnt/backup"
+
+    #Reboot
+    - name: Reboot after 2 minutes
+      shell:
+            "/usr/sbin/shutdown -r +2"
